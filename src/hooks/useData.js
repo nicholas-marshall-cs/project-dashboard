@@ -31,7 +31,7 @@ export function useData(token) {
 
   // ── Customers ──────────────────────────────────────────────────────────────
   const addCustomer = useCallback(async (c) => {
-    const nc = { ...c, id: Date.now().toString() }
+    const nc = { ...c, id: Date.now().toString(), completions: {}, customMilestones: [] }
     await appendCustomer(token, nc); setCustomers(p => [...p, nc]); return nc
   }, [token])
 
@@ -43,10 +43,48 @@ export function useData(token) {
   const removeCustomer = useCallback(async (id) => {
     const idx = customers.findIndex(x => x.id === id)
     await deleteCustomer(token, idx); setCustomers(p => p.filter(x => x.id !== id))
-    // Cascade remove related rows (local only — orphaned rows in sheet are benign)
     setTasks(p => p.filter(x => x.customerId !== id))
     setUpdates(p => p.filter(x => x.customerId !== id))
     setBlockers(p => p.filter(x => x.customerId !== id))
+  }, [token, customers])
+
+  // Toggle a milestone's completed state
+  const toggleMilestone = useCallback(async (customerId, key) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const updated = {
+      ...c,
+      completions: { ...c.completions, [key]: !c.completions?.[key] }
+    }
+    const idx = customers.findIndex(x => x.id === customerId)
+    await updateCustomer(token, updated, idx)
+    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
+  }, [token, customers])
+
+  // Add a custom milestone to a specific customer
+  const addCustomMilestone = useCallback(async (customerId, label) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const newMs = { key: `custom_${Date.now()}`, label }
+    const updated = { ...c, customMilestones: [...(c.customMilestones || []), newMs] }
+    const idx = customers.findIndex(x => x.id === customerId)
+    await updateCustomer(token, updated, idx)
+    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
+  }, [token, customers])
+
+  // Remove a custom milestone from a specific customer
+  const removeCustomMilestone = useCallback(async (customerId, key) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const updated = {
+      ...c,
+      customMilestones: (c.customMilestones || []).filter(m => m.key !== key),
+      completions: Object.fromEntries(Object.entries(c.completions || {}).filter(([k]) => k !== key)),
+      dates: Object.fromEntries(Object.entries(c.dates || {}).filter(([k]) => k !== key)),
+    }
+    const idx = customers.findIndex(x => x.id === customerId)
+    await updateCustomer(token, updated, idx)
+    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
   }, [token, customers])
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -94,6 +132,7 @@ export function useData(token) {
     customers, tasks, updates, blockers,
     loading, error, reload: load,
     addCustomer, editCustomer, removeCustomer,
+    toggleMilestone, addCustomMilestone, removeCustomMilestone,
     addTask, editTask, removeTask,
     addUpdate, removeUpdate,
     addBlocker, resolveBlocker, removeBlocker,

@@ -3,26 +3,170 @@ import { MILESTONES, TASK_STATUSES, BLOCKER_TYPES, formatDate, formatTs, statusM
 import { Tabs, Badge, Avatar, EmptyState, Modal, Field, FormGrid, ModalFooter, SectionHeader } from '../components/UI.jsx'
 
 // ── Milestones tab ─────────────────────────────────────────────────────────────
-function MilestonesTab({ customer, onEdit }) {
-  const ms = MILESTONES.filter(m => m.types.includes(customer.type))
+function MilestoneCard({ label, dateStr, completed, onToggle, onDateChange, isCustom, onRemove }) {
+  const meta  = statusMeta(dateStr, completed)
+  const s     = milestoneStatus(dateStr, completed)
+  const [editing, setEditing] = useState(false)
+
+  const borderColor = completed ? 'var(--green)' : s === 'overdue' ? 'var(--red-bg)' : s === 'soon' ? 'var(--amber-bg)' : 'var(--border)'
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
-      {ms.map(m => {
-        const meta = statusMeta(customer.dates[m.key])
-        const s    = milestoneStatus(customer.dates[m.key])
-        return (
-          <div key={m.key} style={{
-            background: 'var(--bg-3)', border: `1px solid ${s === 'overdue' ? 'var(--red-bg)' : s === 'soon' ? 'var(--amber-bg)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius)', padding: '12px 14px',
-          }}>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6, lineHeight: 1.3 }}>{m.label}</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>{formatDate(customer.dates[m.key])}</div>
-            <Badge label={meta.label} color={meta.color} bg={meta.bg} border={meta.color} />
-          </div>
-        )
-      })}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <button onClick={onEdit} style={{ borderStyle: 'dashed', color: 'var(--text-3)', fontSize: 12 }}>✎ Edit milestones</button>
+    <div style={{
+      background: completed ? 'var(--green-bg)' : 'var(--bg-3)',
+      border: `1px solid ${borderColor}`,
+      borderRadius: 'var(--radius)', padding: '12px 14px',
+      opacity: completed ? 0.85 : 1,
+      transition: 'all 0.15s',
+    }}>
+      {/* Top row: label + remove (custom only) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: completed ? 'var(--green)' : 'var(--text-3)', lineHeight: 1.3, flex: 1, textDecoration: completed ? 'line-through' : 'none' }}>
+          {label}
+          {isCustom && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>custom</span>}
+        </div>
+        {isCustom && (
+          <button className="ghost" onClick={onRemove} style={{ padding: '0 4px', fontSize: 11, color: 'var(--text-3)', opacity: 0.5, marginLeft: 4 }}>✕</button>
+        )}
+      </div>
+
+      {/* Date — click to edit */}
+      {editing ? (
+        <input
+          type="date"
+          defaultValue={dateStr || ''}
+          autoFocus
+          onBlur={e => { onDateChange(e.target.value); setEditing(false) }}
+          onKeyDown={e => { if (e.key === 'Enter') { onDateChange(e.target.value); setEditing(false) } if (e.key === 'Escape') setEditing(false) }}
+          style={{ marginBottom: 8, fontSize: 12 }}
+        />
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          style={{ fontSize: 13, fontWeight: 500, color: completed ? 'var(--green)' : 'var(--text)', marginBottom: 8, fontFamily: 'var(--font-mono)', cursor: 'pointer', borderBottom: '1px dashed var(--border-2)', paddingBottom: 4 }}
+          title="Click to edit date"
+        >
+          {formatDate(dateStr)}
+        </div>
+      )}
+
+      {/* Bottom row: status badge + complete toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <Badge label={meta.label} color={meta.color} bg={meta.bg} border={meta.color} />
+        <button
+          onClick={onToggle}
+          style={{
+            padding: '3px 10px', fontSize: 11,
+            background: completed ? 'var(--green-bg)' : 'transparent',
+            color: completed ? 'var(--green)' : 'var(--text-3)',
+            border: `1px solid ${completed ? 'var(--green)' : 'var(--border-2)'}`,
+            borderRadius: 20, gap: 4,
+          }}
+          title={completed ? 'Mark incomplete' : 'Mark complete'}
+        >
+          {completed ? '✓ Done' : '○ Done'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemoveCustom }) {
+  const [newLabel, setNewLabel] = useState('')
+  const [showAdd,  setShowAdd]  = useState(false)
+  const [saving,   setSaving]   = useState(false)
+
+  const globalMs = MILESTONES.filter(m => m.types.includes(customer.type))
+  const customMs = customer.customMilestones || []
+
+  const handleAddCustom = async () => {
+    if (!newLabel.trim()) return
+    setSaving(true)
+    await onAddCustom(newLabel.trim())
+    setNewLabel(''); setShowAdd(false); setSaving(false)
+  }
+
+  // Progress summary
+  const allMs       = [...globalMs.map(m => m.key), ...customMs.map(m => m.key)]
+  const doneCount   = allMs.filter(k => customer.completions?.[k] || customer.completions?.[`${k}_done`]).length
+  const totalCount  = allMs.length
+
+  return (
+    <div>
+      {/* Progress bar */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Overall progress</span>
+          <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{doneCount} / {totalCount} complete</span>
+        </div>
+        <div style={{ height: 4, background: 'var(--bg-3)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${totalCount ? (doneCount/totalCount)*100 : 0}%`, background: 'var(--green)', borderRadius: 2, transition: 'width 0.3s' }} />
+        </div>
+      </div>
+
+      {/* Global milestones */}
+      <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>Standard milestones</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10, marginBottom: 24 }}>
+        {globalMs.map(m => {
+          const doneKey = `${m.key}_done`
+          const completed = !!(customer.completions?.[doneKey])
+          return (
+            <MilestoneCard
+              key={m.key}
+              label={m.label}
+              dateStr={customer.dates[m.key]}
+              completed={completed}
+              onToggle={() => onToggle(doneKey)}
+              onDateChange={val => onDateChange(m.key, val)}
+              isCustom={false}
+            />
+          )
+        })}
+      </div>
+
+      {/* Custom milestones */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+          Custom milestones ({customMs.length})
+        </div>
+        <button onClick={() => setShowAdd(s => !s)} style={{ fontSize: 11, padding: '4px 10px', color: 'var(--accent)', borderColor: 'var(--accent-dim)' }}>
+          + Add milestone
+        </button>
+      </div>
+
+      {showAdd && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            value={newLabel} onChange={e => setNewLabel(e.target.value)}
+            placeholder="e.g. Security review sign-off"
+            onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
+            autoFocus
+          />
+          <button className="primary" onClick={handleAddCustom} disabled={saving || !newLabel.trim()} style={{ whiteSpace: 'nowrap' }}>Add</button>
+          <button onClick={() => { setShowAdd(false); setNewLabel('') }}>Cancel</button>
+        </div>
+      )}
+
+      {customMs.length === 0 && !showAdd && (
+        <div style={{ fontSize: 13, color: 'var(--text-3)', padding: '12px 0', fontStyle: 'italic' }}>No custom milestones for this customer yet.</div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+        {customMs.map(m => {
+          const doneKey = `${m.key}_done`
+          const completed = !!(customer.completions?.[doneKey] || customer.completions?.[m.key])
+          return (
+            <MilestoneCard
+              key={m.key}
+              label={m.label}
+              dateStr={customer.dates?.[m.key]}
+              completed={completed}
+              onToggle={() => onToggle(m.key)}
+              onDateChange={val => onDateChange(m.key, val)}
+              isCustom={true}
+              onRemove={() => onRemoveCustom(m.key)}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -53,7 +197,11 @@ function TaskModal({ onSave, onClose, saving }) {
   )
 }
 
-const STATUS_COLORS = { 'To Do': ['var(--text-3)','var(--bg-3)'], 'In Progress': ['var(--amber)','var(--amber-bg)'], 'Done': ['var(--green)','var(--green-bg)'] }
+const STATUS_COLORS = {
+  'To Do':      ['var(--text-3)',  'var(--bg-3)'],
+  'In Progress':['var(--amber)',   'var(--amber-bg)'],
+  'Done':       ['var(--green)',   'var(--green-bg)'],
+}
 
 function TasksTab({ tasks, customerId, onAdd, onStatusChange, onDelete, saving }) {
   const [showModal, setShowModal] = useState(false)
@@ -87,13 +235,13 @@ function TasksTab({ tasks, customerId, onAdd, onStatusChange, onDelete, saving }
 }
 
 // ── Updates tab ────────────────────────────────────────────────────────────────
-function UpdatesTab({ updates, customerId, onAdd, onDelete, saving, currentUser }) {
+function UpdatesTab({ updates, customerId, onAdd, onDelete, saving }) {
   const [text, setText] = useState('')
   const myUpdates = [...updates.filter(u => u.customerId === customerId)].sort((a,b) => b.createdAt.localeCompare(a.createdAt))
 
   const submit = async () => {
     if (!text.trim()) return
-    await onAdd({ customerId, text: text.trim(), author: currentUser || 'You' })
+    await onAdd({ customerId, text: text.trim(), author: 'You' })
     setText('')
   }
 
@@ -200,11 +348,17 @@ function BlockersTab({ blockers, customerId, onAdd, onResolve, onDelete, saving 
 }
 
 // ── Main project view ──────────────────────────────────────────────────────────
-export default function ProjectView({ customer, tasks, updates, blockers, onBack, onEdit, onAdd, data }) {
-  const [tab, setTab] = useState('milestones')
+export default function ProjectView({ customer, tasks, updates, blockers, onBack, onEdit, data }) {
+  const [tab,    setTab]    = useState('milestones')
   const [saving, setSaving] = useState(false)
 
   const wrap = fn => async (...args) => { setSaving(true); try { await fn(...args) } finally { setSaving(false) } }
+
+  // Inline date change — updates customer.dates directly
+  const handleDateChange = async (msKey, val) => {
+    const updated = { ...customer, dates: { ...customer.dates, [msKey]: val } }
+    await data.editCustomer(updated)
+  }
 
   const myTasks    = tasks.filter(t => t.customerId === customer.id)
   const myUpdates  = updates.filter(u => u.customerId === customer.id)
@@ -213,14 +367,13 @@ export default function ProjectView({ customer, tasks, updates, blockers, onBack
 
   const tabs = [
     { key: 'milestones', label: 'Milestones' },
-    { key: 'tasks',      label: 'Tasks',   count: myTasks.length },
-    { key: 'updates',    label: 'Updates', count: myUpdates.length },
+    { key: 'tasks',      label: 'Tasks',    count: myTasks.length },
+    { key: 'updates',    label: 'Updates',  count: myUpdates.length },
     { key: 'blockers',   label: 'Blockers', count: openBlockers || undefined },
   ]
 
   return (
     <div>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
         <button className="ghost" onClick={onBack} style={{ fontSize: 13, color: 'var(--text-3)', padding: '6px 10px' }}>← Back</button>
         <Avatar name={customer.name} size={40} />
@@ -237,10 +390,18 @@ export default function ProjectView({ customer, tasks, updates, blockers, onBack
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'milestones' && <MilestonesTab customer={customer} onEdit={onEdit} />}
-      {tab === 'tasks'      && <TasksTab tasks={tasks} customerId={customer.id} onAdd={wrap(data.addTask)} onStatusChange={wrap(data.editTask)} onDelete={wrap(data.removeTask)} saving={saving} />}
-      {tab === 'updates'    && <UpdatesTab updates={updates} customerId={customer.id} onAdd={wrap(data.addUpdate)} onDelete={wrap(data.removeUpdate)} saving={saving} />}
-      {tab === 'blockers'   && <BlockersTab blockers={blockers} customerId={customer.id} onAdd={wrap(data.addBlocker)} onResolve={wrap(data.resolveBlocker)} onDelete={wrap(data.removeBlocker)} saving={saving} />}
+      {tab === 'milestones' && (
+        <MilestonesTab
+          customer={customer}
+          onToggle={key => wrap(data.toggleMilestone)(customer.id, key)}
+          onDateChange={handleDateChange}
+          onAddCustom={label => wrap(data.addCustomMilestone)(customer.id, label)}
+          onRemoveCustom={key => wrap(data.removeCustomMilestone)(customer.id, key)}
+        />
+      )}
+      {tab === 'tasks'    && <TasksTab tasks={tasks} customerId={customer.id} onAdd={wrap(data.addTask)} onStatusChange={wrap(data.editTask)} onDelete={wrap(data.removeTask)} saving={saving} />}
+      {tab === 'updates'  && <UpdatesTab updates={updates} customerId={customer.id} onAdd={wrap(data.addUpdate)} onDelete={wrap(data.removeUpdate)} saving={saving} />}
+      {tab === 'blockers' && <BlockersTab blockers={blockers} customerId={customer.id} onAdd={wrap(data.addBlocker)} onResolve={wrap(data.resolveBlocker)} onDelete={wrap(data.removeBlocker)} saving={saving} />}
     </div>
   )
 }
