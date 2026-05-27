@@ -4,8 +4,9 @@ import { ensureSheets, fetchCustomers, fetchTasks, fetchUpdates, fetchBlockers,
          appendTask, updateTask, deleteTask,
          appendUpdate, deleteUpdate,
          appendBlocker, updateBlocker, deleteBlocker } from '../lib/sheets.js'
+import { MILESTONES } from '../lib/constants.js'
 
-export function useData(token) {
+export function useData(token, currentUser) {
   const [customers, setCustomers] = useState([])
   const [tasks,     setTasks]     = useState([])
   const [updates,   setUpdates]   = useState([])
@@ -29,26 +30,57 @@ export function useData(token) {
 
   useEffect(() => { load() }, [load])
 
-  // ── Internal helper ────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const authorName = currentUser?.name || 'Team member'
+
   const persistCustomer = useCallback(async (updated, prevList) => {
     const idx = prevList.findIndex(x => x.id === updated.id)
     if (idx === -1) throw new Error('Customer not found')
-    await updateCustomer(token, updated, idx)
-    setCustomers(p => p.map(x => x.id === updated.id ? updated : x))
-    return updated
+    const withTs = { ...updated, lastUpdated: new Date().toISOString() }
+    await updateCustomer(token, withTs, idx)
+    setCustomers(p => p.map(x => x.id === updated.id ? withTs : x))
+    return withTs
   }, [token])
+
+  const logSystemUpdate = useCallback(async (customerId, text) => {
+    const entry = {
+      id: `sys_${Date.now()}`,
+      customerId,
+      text,
+      author: authorName,
+      createdAt: new Date().toISOString(),
+      isSystem: 'true',
+    }
+    await appendUpdate(token, entry)
+    setUpdates(p => [...p, entry])
+  }, [token, authorName])
 
   // ── Customers ──────────────────────────────────────────────────────────────
   const addCustomer = useCallback(async (c) => {
-    const nc = { ...c, id: Date.now().toString(), completions: {}, customMilestones: [] }
+    const nc = {
+      ...c,
+      id: Date.now().toString(),
+      completions: {},
+      customMilestones: [],
+      archived: false,
+      lastUpdated: new Date().toISOString(),
+    }
     await appendCustomer(token, nc)
     setCustomers(p => [...p, nc])
     return nc
   }, [token])
 
   const editCustomer = useCallback(async (c) => {
-    await persistCustomer(c, customers)
+    return persistCustomer(c, customers)
   }, [persistCustomer, customers])
+
+  const archiveCustomer = useCallback(async (id, archived) => {
+    const c = customers.find(x => x.id === id)
+    if (!c) return
+    const updated = { ...c, archived }
+    await persistCustomer(updated, customers)
+    await logSystemUpdate(id, archived ? '📦 Project archived.' : '♻️ Project restored to active.')
+  }, [persistCustomer, logSystemUpdate, customers])
 
   const removeCustomer = useCallback(async (id) => {
     const idx = customers.findIndex(x => x.id === id)
@@ -60,21 +92,21 @@ export function useData(token) {
   }, [token, customers])
 
   // ── Global milestone toggle ────────────────────────────────────────────────
-  // Global milestones use completions[key_done]
   const toggleMilestone = useCallback(async (customerId, doneKey) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
-    const updated = {
-      ...c,
-      completions: { ...c.completions, [doneKey]: !c.completions?.[doneKey] }
-    }
+    const nowDone = !c.completions?.[doneKey]
+    const updated = { ...c, completions: { ...c.completions, [doneKey]: nowDone } }
     await persistCustomer(updated, customers)
-  }, [persistCustomer, customers])
+    // Auto-log
+    const msKey   = doneKey.replace('_done', '')
+    const msLabel = MILESTONES.find(m => m.key === msKey)?.label || msKey
+    await logSystemUpdate(customerId, nowDone
+      ? `✅ Milestone marked complete: ${msLabel}`
+      : `↩️ Milestone reopened: ${msLabel}`)
+  }, [persistCustomer, logSystemUpdate, customers])
 
-  // ── Custom milestone operations ────────────────────────────────────────────
-  // Custom milestones store date and completed inside the object itself:
-  // { key, label, date, completed }
-
+  // ── Custom milestones ──────────────────────────────────────────────────────
   const addCustomMilestone = useCallback(async (customerId, label) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
@@ -86,32 +118,49 @@ export function useData(token) {
   const updateCustomMilestoneDate = useCallback(async (customerId, key, date) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
+    const ms = c.customMilestones?.find(m => m.key === key)
     const updated = {
       ...c,
       customMilestones: (c.customMilestones || []).map(m => m.key === key ? { ...m, date } : m)
     }
     await persistCustomer(updated, customers)
-  }, [persistCustomer, customers])
+    if (date && ms) await logSystemUpdate(customerId, `📅 Custom milestone date set: "${ms.label}" → ${date}`)
+  }, [persistCustomer, logSystemUpdate, customers])
 
   const toggleCustomMilestone = useCallback(async (customerId, key) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
+    const ms = c.customMilestones?.find(m => m.key === key)
+    if (!ms) return
+    const nowDone = !ms.completed
     const updated = {
       ...c,
-      customMilestones: (c.customMilestones || []).map(m => m.key === key ? { ...m, completed: !m.completed } : m)
+      customMilestones: (c.customMilestones || []).map(m => m.key === key ? { ...m, completed: nowDone } : m)
     }
     await persistCustomer(updated, customers)
-  }, [persistCustomer, customers])
+    await logSystemUpdate(customerId, nowDone
+      ? `✅ Milestone marked complete: ${ms.label}`
+      : `↩️ Milestone reopened: ${ms.label}`)
+  }, [persistCustomer, logSystemUpdate, customers])
 
   const removeCustomMilestone = useCallback(async (customerId, key) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
-    const updated = {
-      ...c,
-      customMilestones: (c.customMilestones || []).filter(m => m.key !== key)
-    }
+    const ms = c.customMilestones?.find(m => m.key === key)
+    const updated = { ...c, customMilestones: (c.customMilestones || []).filter(m => m.key !== key) }
     await persistCustomer(updated, customers)
-  }, [persistCustomer, customers])
+    if (ms) await logSystemUpdate(customerId, `🗑️ Custom milestone removed: "${ms.label}"`)
+  }, [persistCustomer, logSystemUpdate, customers])
+
+  // ── Global milestone date change (inline) ──────────────────────────────────
+  const updateMilestoneDate = useCallback(async (customerId, msKey, date) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const updated = { ...c, dates: { ...c.dates, [msKey]: date } }
+    await persistCustomer(updated, customers)
+    const msLabel = MILESTONES.find(m => m.key === msKey)?.label || msKey
+    if (date) await logSystemUpdate(customerId, `📅 Date updated: "${msLabel}" → ${date}`)
+  }, [persistCustomer, logSystemUpdate, customers])
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
   const addTask = useCallback(async (t) => {
@@ -129,9 +178,9 @@ export function useData(token) {
 
   // ── Updates ────────────────────────────────────────────────────────────────
   const addUpdate = useCallback(async (u) => {
-    const nu = { ...u, id: Date.now().toString(), createdAt: new Date().toISOString() }
+    const nu = { ...u, id: Date.now().toString(), createdAt: new Date().toISOString(), author: u.author || authorName }
     await appendUpdate(token, nu); setUpdates(p => [...p, nu]); return nu
-  }, [token])
+  }, [token, authorName])
 
   const removeUpdate = useCallback(async (id) => {
     await deleteUpdate(token, id, updates); setUpdates(p => p.filter(x => x.id !== id))
@@ -149,7 +198,8 @@ export function useData(token) {
     const updated = { ...b, resolvedAt: new Date().toISOString() }
     await updateBlocker(token, updated, blockers)
     setBlockers(p => p.map(x => x.id === id ? updated : x))
-  }, [token, blockers])
+    await logSystemUpdate(b.customerId, `✅ Blocker resolved: "${b.title}"`)
+  }, [token, blockers, logSystemUpdate])
 
   const removeBlocker = useCallback(async (id) => {
     await deleteBlocker(token, id, blockers); setBlockers(p => p.filter(x => x.id !== id))
@@ -158,8 +208,8 @@ export function useData(token) {
   return {
     customers, tasks, updates, blockers,
     loading, error, reload: load,
-    addCustomer, editCustomer, removeCustomer,
-    toggleMilestone,
+    addCustomer, editCustomer, removeCustomer, archiveCustomer,
+    toggleMilestone, updateMilestoneDate,
     addCustomMilestone, updateCustomMilestoneDate, toggleCustomMilestone, removeCustomMilestone,
     addTask, editTask, removeTask,
     addUpdate, removeUpdate,

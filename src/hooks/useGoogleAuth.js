@@ -4,9 +4,16 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 const SCOPES    = 'https://www.googleapis.com/auth/spreadsheets'
 
 export function useGoogleAuth() {
-  const [token,   setToken]   = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [token,    setToken]    = useState(null)
+  const [user,     setUser]     = useState(null) // { name, email }
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState(null)
+
+  // Restore persisted display name
+  useEffect(() => {
+    const saved = localStorage.getItem('pd_display_name')
+    if (saved) setUser(u => u ? u : { name: saved, email: '' })
+  }, [])
 
   useEffect(() => {
     if (document.getElementById('gis')) { setLoading(false); return }
@@ -27,6 +34,29 @@ export function useGoogleAuth() {
         if (resp.error) { setError(resp.error); return }
         setToken(resp.access_token)
         setTimeout(() => setToken(null), (resp.expires_in - 60) * 1000)
+
+        // Decode name/email from JWT id_token hint if available
+        // Otherwise fall back to stored name or prompt once
+        try {
+          if (resp.id_token) {
+            const payload = JSON.parse(atob(resp.id_token.split('.')[1]))
+            const name = payload.name || payload.email || 'Team member'
+            setUser({ name, email: payload.email || '' })
+            localStorage.setItem('pd_display_name', name)
+          } else {
+            const stored = localStorage.getItem('pd_display_name')
+            if (!stored) {
+              const name = window.prompt('What\'s your name? (shown on updates you post)', '') || 'Team member'
+              localStorage.setItem('pd_display_name', name)
+              setUser({ name, email: '' })
+            } else {
+              setUser({ name: stored, email: '' })
+            }
+          }
+        } catch {
+          const stored = localStorage.getItem('pd_display_name') || 'Team member'
+          setUser({ name: stored, email: '' })
+        }
       }
     }).requestAccessToken()
   }, [])
@@ -36,5 +66,10 @@ export function useGoogleAuth() {
     setToken(null)
   }, [token])
 
-  return { token, loading, error, signIn, signOut }
+  const updateDisplayName = useCallback((name) => {
+    localStorage.setItem('pd_display_name', name)
+    setUser(u => ({ ...u, name }))
+  }, [])
+
+  return { token, user, loading, error, signIn, signOut, updateDisplayName }
 }

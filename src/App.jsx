@@ -7,14 +7,16 @@ import CustomerModal from './components/CustomerModal.jsx'
 import './App.css'
 
 export default function App() {
-  const { token, loading: authLoading, error: authError, signIn, signOut } = useGoogleAuth()
-  const data = useData(token)
+  const { token, user, loading: authLoading, error: authError, signIn, signOut, updateDisplayName } = useGoogleAuth()
+  const data = useData(token, user)
   const { customers, tasks, updates, blockers, loading, error, reload } = data
 
-  const [view,    setView]   = useState('dashboard') // 'dashboard' | customer object
-  const [modal,   setModal]  = useState(null)        // null | 'add' | customer object
-  const [saving,  setSaving] = useState(false)
-  const [saveErr, setSaveErr] = useState(null)
+  const [view,         setView]        = useState('dashboard')
+  const [modal,        setModal]       = useState(null)
+  const [saving,       setSaving]      = useState(false)
+  const [saveErr,      setSaveErr]     = useState(null)
+  const [editingName,  setEditingName] = useState(false)
+  const [nameInput,    setNameInput]   = useState('')
 
   const handleSave = async (form) => {
     setSaving(true); setSaveErr(null)
@@ -32,20 +34,25 @@ export default function App() {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Remove this customer and all their data?')) return
+    if (!window.confirm('Permanently delete this customer and all their data?')) return
     await data.removeCustomer(id)
     setView('dashboard')
+  }
+
+  const handleNameSave = () => {
+    if (nameInput.trim()) updateDisplayName(nameInput.trim())
+    setEditingName(false)
   }
 
   const isDashboard = view === 'dashboard'
 
   return (
     <div className="app">
-      {/* Top bar */}
       <header className="topbar">
         <div className="topbar-left">
-          <span className="logo" onClick={() => setView('dashboard')} style={{ cursor: 'pointer' }}>
-            <span className="logo-mark">◆</span> Project Dashboard
+          <span className="logo" onClick={() => setView('dashboard')}>
+            <span className="logo-mark">◆</span>
+            <span className="logo-text">Project Dashboard</span>
           </span>
           {token && !isDashboard && typeof view === 'object' && (
             <span className="breadcrumb">/ {view.name}</span>
@@ -54,7 +61,26 @@ export default function App() {
         <div className="topbar-right">
           {token && (
             <>
-              <button className="ghost" onClick={reload} disabled={loading} style={{ fontSize: 12, padding: '5px 10px' }}>↻</button>
+              {/* Display name — click to edit */}
+              {editingName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleNameSave(); if (e.key === 'Escape') setEditingName(false) }}
+                    autoFocus
+                    style={{ width: 130, padding: '5px 8px', fontSize: 12 }}
+                    placeholder="Your name"
+                  />
+                  <button className="primary" onClick={handleNameSave} style={{ padding: '5px 10px', fontSize: 12 }}>Save</button>
+                </div>
+              ) : (
+                <button className="ghost" onClick={() => { setNameInput(user?.name || ''); setEditingName(true) }}
+                  style={{ fontSize: 12, color: 'var(--text-3)' }} title="Change your display name">
+                  👤 {user?.name || 'Set name'}
+                </button>
+              )}
+              <button className="ghost" onClick={reload} disabled={loading} style={{ fontSize: 12, padding: '5px 10px' }} title="Refresh data">↻</button>
               <button className="primary" onClick={() => setModal('add')}>+ Add customer</button>
               <button className="ghost" onClick={signOut} style={{ fontSize: 12 }}>Sign out</button>
             </>
@@ -63,7 +89,6 @@ export default function App() {
       </header>
 
       <main className="main">
-        {/* Sign in */}
         {!token && !authLoading && (
           <div className="signin-wrap">
             <div className="signin-card">
@@ -80,9 +105,7 @@ export default function App() {
 
         {token && (
           <>
-            {error && (
-              <div className="error-banner">⚠ {error} <button onClick={reload} style={{ marginLeft: 8 }}>Retry</button></div>
-            )}
+            {error && <div className="error-banner">⚠ {error} <button onClick={reload} style={{ marginLeft: 8 }}>Retry</button></div>}
             {loading && <div className="center-msg">Loading data…</div>}
             {!loading && isDashboard && (
               <DashboardView
@@ -90,6 +113,7 @@ export default function App() {
                 tasks={tasks}
                 blockers={blockers}
                 onSelectCustomer={c => setView(c)}
+                onAddCustomer={() => setModal('add')}
               />
             )}
             {!loading && !isDashboard && typeof view === 'object' && (
@@ -98,9 +122,11 @@ export default function App() {
                 tasks={tasks}
                 updates={updates}
                 blockers={blockers}
+                currentUser={user}
                 onBack={() => setView('dashboard')}
                 onEdit={() => setModal(customers.find(c => c.id === view.id) || view)}
                 onDelete={handleDelete}
+                onArchive={(id, archived) => { data.archiveCustomer(id, archived); setView('dashboard') }}
                 data={data}
               />
             )}
@@ -116,7 +142,6 @@ export default function App() {
           saving={saving}
         />
       )}
-
       {saveErr && <div className="toast-error">⚠ {saveErr}</div>}
     </div>
   )

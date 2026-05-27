@@ -76,3 +76,23 @@
   border-radius: var(--radius); font-size: 13px;
   z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
+
+/* ── Mobile responsive ────────────────────────────────────────────────────── */
+.portfolio-table-wrap { display: block; overflow-x: auto; }
+.portfolio-cards      { display: none; }
+
+@media (max-width: 680px) {
+  .topbar { padding: 0 1rem; height: auto; min-height: 54px; flex-wrap: wrap; gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+  .topbar-right { gap: 6px; flex-wrap: wrap; }
+  .logo-text { display: none; }
+  .breadcrumb { font-size: 12px; }
+  .main { padding: 1rem 1rem 3rem; }
+
+  .portfolio-table-wrap { display: none; }
+  .portfolio-cards      { display: block; }
+}
+
+@media (max-width: 500px) {
+  .signin-card { padding: 1.5rem; }
+  .signin-card h1 { font-size: 18px; }
+}
