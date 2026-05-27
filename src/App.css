@@ -1,154 +1,98 @@
-import { useState } from 'react'
-import { useGoogleAuth } from './hooks/useGoogleAuth.js'
-import { useData } from './hooks/useData.js'
-import { useTheme } from './hooks/useTheme.js'
-import DashboardView from './views/DashboardView.jsx'
-import ProjectView from './views/ProjectView.jsx'
-import CustomerModal from './components/CustomerModal.jsx'
-import './App.css'
+.app { min-height: 100vh; display: flex; flex-direction: column; }
 
-export default function App() {
-  const { theme, toggle: toggleTheme } = useTheme()
-  const { token, user, loading: authLoading, error: authError, signIn, signOut, updateDisplayName } = useGoogleAuth()
-  const data = useData(token, user)
-  const { customers, tasks, updates, blockers, loading, error, reload } = data
+/* Top bar */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem; height: 54px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.topbar-right { display: flex; align-items: center; gap: 8px; }
 
-  const [view,         setView]        = useState('dashboard')
-  const [modal,        setModal]       = useState(null)
-  const [saving,       setSaving]      = useState(false)
-  const [saveErr,      setSaveErr]     = useState(null)
-  const [editingName,  setEditingName] = useState(false)
-  const [nameInput,    setNameInput]   = useState('')
+.logo {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 700;
+  color: var(--text); letter-spacing: -0.3px;
+  display: flex; align-items: center; gap: 7px;
+  user-select: none;
+}
+.logo-mark { color: var(--accent); font-size: 12px; }
+.breadcrumb { font-size: 13px; color: var(--text-3); }
 
-  const handleSave = async (form) => {
-    setSaving(true); setSaveErr(null)
-    try {
-      if (modal && modal !== 'add') {
-        const updated = { ...modal, ...form }
-        await data.editCustomer(updated)
-        if (view && view.id === modal.id) setView(updated)
-      } else {
-        await data.addCustomer(form)
-      }
-      setModal(null)
-    } catch (e) { setSaveErr(e.message) }
-    finally     { setSaving(false) }
-  }
+/* Main */
+.main {
+  flex: 1; max-width: 1100px; width: 100%;
+  margin: 0 auto; padding: 1.75rem 1.5rem 4rem;
+}
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Permanently delete this customer and all their data?')) return
-    await data.removeCustomer(id)
-    setView('dashboard')
-  }
+/* Sign in */
+.signin-wrap {
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(100vh - 54px);
+}
+.signin-card {
+  text-align: center; max-width: 380px; width: 100%;
+  padding: 2.5rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+}
+.signin-logo {
+  font-size: 36px; color: var(--accent);
+  margin-bottom: 1rem; line-height: 1;
+}
+.signin-card h1 {
+  font-size: 22px; font-weight: 700;
+  font-family: var(--font-display);
+  margin-bottom: 0.5rem; color: var(--text);
+}
+.signin-card p {
+  font-size: 13px; color: var(--text-3);
+  margin-bottom: 1.75rem; line-height: 1.6;
+}
+.signin-btn { width: 100%; justify-content: center; padding: 11px; font-size: 14px; }
 
-  const handleNameSave = () => {
-    if (nameInput.trim()) updateDisplayName(nameInput.trim())
-    setEditingName(false)
-  }
+/* Misc */
+.center-msg { text-align: center; color: var(--text-3); padding: 4rem 0; font-size: 14px; }
 
-  const isDashboard = view === 'dashboard'
+.error-banner {
+  background: var(--red-bg); color: var(--red);
+  padding: 10px 16px; border-radius: var(--radius);
+  font-size: 13px; margin-bottom: 1.25rem;
+  display: flex; align-items: center; border: 1px solid var(--red-bg);
+}
+.error-inline {
+  background: var(--red-bg); color: var(--red);
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  font-size: 12px; margin-bottom: 1rem;
+}
+.toast-error {
+  position: fixed; bottom: 1.5rem; right: 1.5rem;
+  background: var(--red-bg); color: var(--red);
+  border: 1px solid var(--red); padding: 10px 16px;
+  border-radius: var(--radius); font-size: 13px;
+  z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
 
-  return (
-    <div className="app">
-      <header className="topbar">
-        <div className="topbar-left">
-          <span className="logo" onClick={() => setView('dashboard')}>
-            <span className="logo-mark">◆</span>
-            <span className="logo-text">Project Dashboard</span>
-          </span>
-          {token && !isDashboard && typeof view === 'object' && (
-            <span className="breadcrumb">/ {view.name}</span>
-          )}
-        </div>
-        <div className="topbar-right">
-          {token && (
-            <>
-              {/* Display name — click to edit */}
-              {editingName ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input
-                    value={nameInput}
-                    onChange={e => setNameInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleNameSave(); if (e.key === 'Escape') setEditingName(false) }}
-                    autoFocus
-                    style={{ width: 130, padding: '5px 8px', fontSize: 12 }}
-                    placeholder="Your name"
-                  />
-                  <button className="primary" onClick={handleNameSave} style={{ padding: '5px 10px', fontSize: 12 }}>Save</button>
-                </div>
-              ) : (
-                <button className="ghost" onClick={() => { setNameInput(user?.name || ''); setEditingName(true) }}
-                  style={{ fontSize: 12, color: 'var(--text-3)' }} title="Change your display name">
-                  👤 {user?.name || 'Set name'}
-                </button>
-              )}
-              <button className="ghost" onClick={toggleTheme} style={{ fontSize: 14, padding: '5px 9px' }} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
-              <button className="ghost" onClick={reload} disabled={loading} style={{ fontSize: 12, padding: '5px 10px' }} title="Refresh data">↻</button>
-              <button className="primary" onClick={() => setModal('add')}>+ Add customer</button>
-              <button className="ghost" onClick={signOut} style={{ fontSize: 12 }}>Sign out</button>
-            </>
-          )}
-        </div>
-      </header>
+/* ── Mobile responsive ────────────────────────────────────────────────────── */
+.portfolio-table-wrap { display: block; overflow-x: auto; }
+.portfolio-cards      { display: none; }
 
-      <main className="main">
-        {!token && !authLoading && (
-          <div className="signin-wrap">
-            <div className="signin-card">
-              <div className="signin-logo">◆</div>
-              <h1>Project Dashboard</h1>
-              <p>Track milestones, tasks, updates and blockers across all your customer deployments.</p>
-              {authError && <div className="error-inline">{authError}</div>}
-              <button className="primary signin-btn" onClick={signIn}>Sign in with Google</button>
-              <button className="ghost" onClick={toggleTheme} style={{ marginTop: 12, fontSize: 13, color: 'var(--text-3)', width: '100%', justifyContent: 'center' }}>
-                {theme === 'dark' ? '☀️ Switch to light mode' : '🌙 Switch to dark mode'}
-              </button>
-            </div>
-          </div>
-        )}
+@media (max-width: 680px) {
+  .topbar { padding: 0 1rem; height: auto; min-height: 54px; flex-wrap: wrap; gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+  .topbar-right { gap: 6px; flex-wrap: wrap; }
+  .logo-text { display: none; }
+  .breadcrumb { font-size: 12px; }
+  .main { padding: 1rem 1rem 3rem; }
 
-        {authLoading && <div className="center-msg">Loading…</div>}
+  .portfolio-table-wrap { display: none; }
+  .portfolio-cards      { display: block; }
+}
 
-        {token && (
-          <>
-            {error && <div className="error-banner">⚠ {error} <button onClick={reload} style={{ marginLeft: 8 }}>Retry</button></div>}
-            {loading && <div className="center-msg">Loading data…</div>}
-            {!loading && isDashboard && (
-              <DashboardView
-                customers={customers}
-                tasks={tasks}
-                blockers={blockers}
-                onSelectCustomer={c => setView(c)}
-                onAddCustomer={() => setModal('add')}
-              />
-            )}
-            {!loading && !isDashboard && typeof view === 'object' && (
-              <ProjectView
-                customer={customers.find(c => c.id === view.id) || view}
-                tasks={tasks}
-                updates={updates}
-                blockers={blockers}
-                currentUser={user}
-                onBack={() => setView('dashboard')}
-                onEdit={() => setModal(customers.find(c => c.id === view.id) || view)}
-                onDelete={handleDelete}
-                onArchive={(id, archived) => { data.archiveCustomer(id, archived); setView('dashboard') }}
-                data={data}
-              />
-            )}
-          </>
-        )}
-      </main>
-
-      {modal && (
-        <CustomerModal
-          customer={modal === 'add' ? null : modal}
-          onSave={handleSave}
-          onClose={() => { setModal(null); setSaveErr(null) }}
-          saving={saving}
-        />
-      )}
-      {saveErr && <div className="toast-error">⚠ {saveErr}</div>}
-    </div>
-  )
+@media (max-width: 500px) {
+  .signin-card { padding: 1.5rem; }
+  .signin-card h1 { font-size: 18px; }
 }
