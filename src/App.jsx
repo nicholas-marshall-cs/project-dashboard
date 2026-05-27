@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth.js'
 import { useData } from './hooks/useData.js'
+import { useTheme } from './hooks/useTheme.js'
 import DashboardView from './views/DashboardView.jsx'
 import ProjectView from './views/ProjectView.jsx'
 import CustomerModal from './components/CustomerModal.jsx'
 import './App.css'
 
 export default function App() {
+  const { theme, toggle: toggleTheme } = useTheme()
   const { token, user, loading: authLoading, error: authError, signIn, signOut, updateDisplayName } = useGoogleAuth()
   const data = useData(token, user)
   const { customers, tasks, updates, blockers, loading, error, reload } = data
@@ -80,6 +82,7 @@ export default function App() {
                   👤 {user?.name || 'Set name'}
                 </button>
               )}
+              <button className="ghost" onClick={toggleTheme} style={{ fontSize: 14, padding: '5px 9px' }} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
               <button className="ghost" onClick={reload} disabled={loading} style={{ fontSize: 12, padding: '5px 10px' }} title="Refresh data">↻</button>
               <button className="primary" onClick={() => setModal('add')}>+ Add customer</button>
               <button className="ghost" onClick={signOut} style={{ fontSize: 12 }}>Sign out</button>
@@ -97,6 +100,9 @@ export default function App() {
               <p>Track milestones, tasks, updates and blockers across all your customer deployments.</p>
               {authError && <div className="error-inline">{authError}</div>}
               <button className="primary signin-btn" onClick={signIn}>Sign in with Google</button>
+              <button className="ghost" onClick={toggleTheme} style={{ marginTop: 12, fontSize: 13, color: 'var(--text-3)', width: '100%', justifyContent: 'center' }}>
+                {theme === 'dark' ? '☀️ Switch to light mode' : '🌙 Switch to dark mode'}
+              </button>
             </div>
           </div>
         )}
