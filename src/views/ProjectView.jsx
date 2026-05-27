@@ -172,14 +172,22 @@ function MilestonesTab({ customer, onToggleGlobal, onGlobalDateChange, onAddCust
 }
 
 // ── Tasks tab ──────────────────────────────────────────────────────────────────
-function TaskModal({ onSave, onClose, saving }) {
-  const [form, setForm] = useState({ title: '', owner: '', status: 'To Do' })
+function TaskModal({ task, onSave, onClose, saving }) {
+  const isEdit = !!task
+  const [form, setForm] = useState(task
+    ? { title: task.title, owner: task.owner || '', status: task.status }
+    : { title: '', owner: '', status: 'To Do' }
+  )
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
   return (
-    <Modal title="Add task" onClose={onClose} width={440}>
-      <Field label="Task title *"><input value={form.title} onChange={e => set('title', e.target.value)} placeholder="What are we building?" /></Field>
+    <Modal title={isEdit ? 'Edit task' : 'Add task'} onClose={onClose} width={440}>
+      <Field label="Task title *">
+        <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="What are we building?" autoFocus />
+      </Field>
       <FormGrid>
-        <Field label="Owner"><input value={form.owner} onChange={e => set('owner', e.target.value)} placeholder="Team member" /></Field>
+        <Field label="Owner">
+          <input value={form.owner} onChange={e => set('owner', e.target.value)} placeholder="Team member" />
+        </Field>
         <Field label="Status">
           <select value={form.status} onChange={e => set('status', e.target.value)}>
             {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -188,7 +196,9 @@ function TaskModal({ onSave, onClose, saving }) {
       </FormGrid>
       <ModalFooter>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={saving || !form.title.trim()} onClick={() => onSave(form)}>{saving ? 'Saving…' : 'Add task'}</button>
+        <button className="primary" disabled={saving || !form.title.trim()} onClick={() => onSave(form)}>
+          {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add task'}
+        </button>
       </ModalFooter>
     </Modal>
   )
@@ -196,32 +206,67 @@ function TaskModal({ onSave, onClose, saving }) {
 
 const STATUS_COLORS = { 'To Do': ['var(--text-3)','var(--bg-3)'], 'In Progress': ['var(--amber)','var(--amber-bg)'], 'Done': ['var(--green)','var(--green-bg)'] }
 
-function TasksTab({ tasks, customerId, onAdd, onStatusChange, onDelete, saving }) {
-  const [showModal, setShowModal] = useState(false)
+function TasksTab({ tasks, customerId, onAdd, onEdit, onStatusChange, onDelete, saving }) {
+  const [modal,     setModal]    = useState(null) // null | 'add' | task object
   const myTasks = tasks.filter(t => t.customerId === customerId)
+
+  const handleSave = async (form) => {
+    if (modal === 'add') {
+      await onAdd({ ...form, customerId })
+    } else {
+      await onEdit({ ...modal, ...form })
+    }
+    setModal(null)
+  }
+
   return (
     <div>
-      <SectionHeader title={`Tasks (${myTasks.length})`} action={<button className="primary" onClick={() => setShowModal(true)} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add task</button>} />
+      <SectionHeader
+        title={`Tasks (${myTasks.length})`}
+        action={<button className="primary" onClick={() => setModal('add')} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add task</button>}
+      />
       {myTasks.length === 0 && <EmptyState icon="✅" message="No tasks yet — add what the team is building." />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {myTasks.map(t => {
           const [color, bg] = STATUS_COLORS[t.status] || STATUS_COLORS['To Do']
           return (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '11px 14px' }}>
-              <select value={t.status} onChange={e => onStatusChange({ ...t, status: e.target.value })}
-                style={{ width: 'auto', padding: '3px 8px', fontSize: 11, background: bg, color, border: `1px solid ${color}44`, borderRadius: 20, fontFamily: 'var(--font-mono)', cursor: 'pointer' }}>
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>
+              {/* Status pill */}
+              <select
+                value={t.status}
+                onChange={e => onStatusChange({ ...t, status: e.target.value })}
+                style={{ width: 'auto', padding: '3px 8px', fontSize: 11, background: bg, color, border: `1px solid ${color}44`, borderRadius: 20, fontFamily: 'var(--font-mono)', cursor: 'pointer', flexShrink: 0 }}
+              >
                 {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
               </select>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: t.status === 'Done' ? 'var(--text-3)' : 'var(--text)', textDecoration: t.status === 'Done' ? 'line-through' : 'none' }}>{t.title}</div>
+              {/* Title + owner */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: t.status === 'Done' ? 'var(--text-3)' : 'var(--text)', textDecoration: t.status === 'Done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t.title}
+                </div>
                 {t.owner && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{t.owner}</div>}
               </div>
-              <button className="ghost danger" onClick={() => onDelete(t.id)} style={{ padding: '3px 7px', fontSize: 12, opacity: 0.5 }}>✕</button>
+              {/* Edit + delete */}
+              <button
+                onClick={() => setModal(t)}
+                style={{ padding: '3px 8px', fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}
+                title="Edit task"
+              >
+                ✎ Edit
+              </button>
+              <button className="ghost danger" onClick={() => onDelete(t.id)} style={{ padding: '3px 7px', fontSize: 12, opacity: 0.5, flexShrink: 0 }}>✕</button>
             </div>
           )
         })}
       </div>
-      {showModal && <TaskModal onSave={async f => { await onAdd({ ...f, customerId }); setShowModal(false) }} onClose={() => setShowModal(false)} saving={saving} />}
+      {modal && (
+        <TaskModal
+          task={modal === 'add' ? null : modal}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+          saving={saving}
+        />
+      )}
     </div>
   )
 }
@@ -275,59 +320,123 @@ function UpdatesTab({ updates, customerId, onAdd, onDelete, saving, currentUser 
 }
 
 // ── Blockers tab ───────────────────────────────────────────────────────────────
-function BlockerModal({ customerId, onSave, onClose, saving }) {
-  const [form, setForm] = useState({ title: '', type: 'Internal', detail: '' })
+function BlockerModal({ blocker, customerId, onSave, onClose, saving }) {
+  const isEdit = !!blocker
+  const [form, setForm] = useState(blocker
+    ? { title: blocker.title, type: blocker.type, detail: blocker.detail || '' }
+    : { title: '', type: 'Internal', detail: '' }
+  )
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
   return (
-    <Modal title="Add blocker / open item" onClose={onClose} width={480}>
-      <Field label="Title *"><input value={form.title} onChange={e => set('title', e.target.value)} placeholder="What's blocked?" /></Field>
-      <Field label="Type"><select value={form.type} onChange={e => set('type', e.target.value)}>{BLOCKER_TYPES.map(t => <option key={t}>{t}</option>)}</select></Field>
-      <Field label="Detail"><textarea value={form.detail} onChange={e => set('detail', e.target.value)} placeholder="More context…" style={{ minHeight: 70 }} /></Field>
+    <Modal title={isEdit ? 'Edit blocker' : 'Add blocker / open item'} onClose={onClose} width={480}>
+      <Field label="Title *">
+        <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="What's blocked?" autoFocus />
+      </Field>
+      <Field label="Type">
+        <select value={form.type} onChange={e => set('type', e.target.value)}>
+          {BLOCKER_TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+      </Field>
+      <Field label="Detail">
+        <textarea value={form.detail} onChange={e => set('detail', e.target.value)} placeholder="More context, latest status…" style={{ minHeight: 80 }} />
+      </Field>
       <ModalFooter>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={saving || !form.title.trim()} onClick={() => onSave({ ...form, customerId })}>{saving ? 'Saving…' : 'Add blocker'}</button>
+        <button className="primary" disabled={saving || !form.title.trim()} onClick={() => onSave(form)}>
+          {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add blocker'}
+        </button>
       </ModalFooter>
     </Modal>
   )
 }
 
-function BlockersTab({ blockers, customerId, onAdd, onResolve, onDelete, saving }) {
-  const [showModal, setShowModal] = useState(false)
+function BlockersTab({ blockers, customerId, onAdd, onEdit, onResolve, onDelete, saving }) {
+  const [modal,     setModal]    = useState(null) // null | 'add' | blocker object
   const myBlockers = [...blockers.filter(b => b.customerId === customerId)].sort((a,b) => a.resolvedAt.localeCompare(b.resolvedAt) || b.raisedAt.localeCompare(a.raisedAt))
   const open   = myBlockers.filter(b => !b.resolvedAt)
   const closed = myBlockers.filter(b => b.resolvedAt)
+
+  const handleSave = async (form) => {
+    if (modal === 'add') {
+      await onAdd({ ...form, customerId })
+    } else {
+      await onEdit({ ...modal, ...form })
+    }
+    setModal(null)
+  }
+
   const TypeBadge = ({ type }) => type === 'Waiting on Customer'
     ? <Badge label="Waiting on customer" color="var(--amber)" bg="var(--amber-bg)" border="var(--amber)" />
     : <Badge label="Internal" color="var(--red)" bg="var(--red-bg)" border="var(--red)" />
+
   const BlockerRow = ({ b }) => (
     <div style={{ background: 'var(--bg-3)', border: `1px solid ${b.resolvedAt ? 'var(--border)' : 'var(--border-2)'}`, borderRadius: 'var(--radius)', padding: '12px 14px', opacity: b.resolvedAt ? 0.55 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: b.resolvedAt ? 'var(--text-3)' : 'var(--text)', textDecoration: b.resolvedAt ? 'line-through' : 'none' }}>{b.title}</span>
             <TypeBadge type={b.type} />
             {b.resolvedAt && <Badge label="Resolved" color="var(--green)" bg="var(--green-bg)" border="var(--green)" />}
           </div>
-          {b.detail && <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4, lineHeight: 1.5 }}>{b.detail}</p>}
-          <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Raised {formatTs(b.raisedAt)}{b.resolvedAt ? ` · Resolved ${formatTs(b.resolvedAt)}` : ''}</div>
+          {b.detail && (
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{b.detail}</p>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+            Raised {formatTs(b.raisedAt)}{b.resolvedAt ? ` · Resolved ${formatTs(b.resolvedAt)}` : ''}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          {!b.resolvedAt && <button onClick={() => onResolve(b.id)} style={{ fontSize: 11, padding: '4px 10px', color: 'var(--green)', borderColor: 'var(--green-bg)' }}>✓ Resolve</button>}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }}>
+          {/* Edit always available — useful even on resolved blockers to clarify detail */}
+          <button
+            onClick={() => setModal(b)}
+            style={{ fontSize: 11, padding: '4px 10px', color: 'var(--text-3)' }}
+            title="Edit blocker"
+          >
+            ✎ Edit
+          </button>
+          {!b.resolvedAt && (
+            <button
+              onClick={() => onResolve(b.id)}
+              style={{ fontSize: 11, padding: '4px 10px', color: 'var(--green)', borderColor: 'var(--green-bg)' }}
+            >
+              ✓ Resolve
+            </button>
+          )}
           <button className="ghost" onClick={() => onDelete(b.id)} style={{ padding: '4px 7px', fontSize: 12, color: 'var(--text-3)', opacity: 0.5 }}>✕</button>
         </div>
       </div>
     </div>
   )
+
   return (
     <div>
-      <SectionHeader title={`Open items (${open.length})`} action={<button className="primary" onClick={() => setShowModal(true)} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add blocker</button>} />
+      <SectionHeader
+        title={`Open items (${open.length})`}
+        action={<button className="primary" onClick={() => setModal('add')} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add blocker</button>}
+      />
       {open.length === 0 && <EmptyState icon="🚀" message="No open blockers — all clear." />}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: closed.length ? 20 : 0 }}>{open.map(b => <BlockerRow key={b.id} b={b} />)}</div>
-      {closed.length > 0 && <>
-        <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>Resolved ({closed.length})</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{closed.map(b => <BlockerRow key={b.id} b={b} />)}</div>
-      </>}
-      {showModal && <BlockerModal customerId={customerId} onSave={async f => { await onAdd(f); setShowModal(false) }} onClose={() => setShowModal(false)} saving={saving} />}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: closed.length ? 20 : 0 }}>
+        {open.map(b => <BlockerRow key={b.id} b={b} />)}
+      </div>
+      {closed.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>
+            Resolved ({closed.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {closed.map(b => <BlockerRow key={b.id} b={b} />)}
+          </div>
+        </>
+      )}
+      {modal && (
+        <BlockerModal
+          blocker={modal === 'add' ? null : modal}
+          customerId={customerId}
+          onSave={handleSave}
+          onClose={() => setModal(null)}
+          saving={saving}
+        />
+      )}
     </div>
   )
 }
@@ -389,9 +498,9 @@ export default function ProjectView({ customer, tasks, updates, blockers, curren
           onRemoveCustom={key       => wrap(data.removeCustomMilestone)(customer.id, key)}
         />
       )}
-      {tab === 'tasks'    && <TasksTab tasks={tasks} customerId={customer.id} onAdd={wrap(data.addTask)} onStatusChange={wrap(data.editTask)} onDelete={wrap(data.removeTask)} saving={saveStatus === 'saving'} />}
+      {tab === 'tasks'    && <TasksTab tasks={tasks} customerId={customer.id} onAdd={wrap(data.addTask)} onEdit={wrap(data.editTask)} onStatusChange={wrap(data.editTask)} onDelete={wrap(data.removeTask)} saving={saveStatus === 'saving'} />}
       {tab === 'updates'  && <UpdatesTab updates={updates} customerId={customer.id} onAdd={wrap(data.addUpdate)} onDelete={wrap(data.removeUpdate)} saving={saveStatus === 'saving'} currentUser={currentUser} />}
-      {tab === 'blockers' && <BlockersTab blockers={blockers} customerId={customer.id} onAdd={wrap(data.addBlocker)} onResolve={wrap(data.resolveBlocker)} onDelete={wrap(data.removeBlocker)} saving={saveStatus === 'saving'} />}
+      {tab === 'blockers' && <BlockersTab blockers={blockers} customerId={customer.id} onAdd={wrap(data.addBlocker)} onEdit={wrap(data.editBlocker)} onResolve={wrap(data.resolveBlocker)} onDelete={wrap(data.removeBlocker)} saving={saveStatus === 'saving'} />}
     </div>
   )
 }

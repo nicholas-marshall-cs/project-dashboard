@@ -201,6 +201,17 @@ export function useData(token, currentUser) {
     await logSystemUpdate(b.customerId, `✅ Blocker resolved: "${b.title}"`)
   }, [token, blockers, logSystemUpdate])
 
+  const editBlocker = useCallback(async (b) => {
+    const prev = blockers.find(x => x.id === b.id)
+    await updateBlocker(token, b, blockers)
+    setBlockers(p => p.map(x => x.id === b.id ? b : x))
+    // Log if title or type changed
+    const changes = []
+    if (prev && prev.title !== b.title)  changes.push(`title → "${b.title}"`)
+    if (prev && prev.type  !== b.type)   changes.push(`type → ${b.type}`)
+    if (changes.length) await logSystemUpdate(b.customerId, `✏️ Blocker updated: ${changes.join(', ')}`)
+  }, [token, blockers, logSystemUpdate])
+
   const removeBlocker = useCallback(async (id) => {
     await deleteBlocker(token, id, blockers); setBlockers(p => p.filter(x => x.id !== id))
   }, [token, blockers])
@@ -213,6 +224,6 @@ export function useData(token, currentUser) {
     addCustomMilestone, updateCustomMilestoneDate, toggleCustomMilestone, removeCustomMilestone,
     addTask, editTask, removeTask,
     addUpdate, removeUpdate,
-    addBlocker, resolveBlocker, removeBlocker,
+    addBlocker, editBlocker, resolveBlocker, removeBlocker,
   }
 }
