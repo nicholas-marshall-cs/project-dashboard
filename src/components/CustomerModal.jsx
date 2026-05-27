@@ -34,7 +34,7 @@ export default function CustomerModal({ customer, onSave, onClose, saving }) {
           </select>
         </Field>
         <Field label="Notes">
-          <input value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Context for the team" />
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Context for the team — background, key contacts, important details…" style={{ minHeight: 80 }} />
         </Field>
 
         <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', margin: '18px 0 12px' }}>Milestone dates</div>

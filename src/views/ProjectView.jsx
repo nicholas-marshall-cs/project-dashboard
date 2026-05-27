@@ -484,6 +484,28 @@ export default function ProjectView({ customer, tasks, updates, blockers, curren
         </div>
       </div>
 
+      {/* Notes card — shown when notes exist */}
+      {customer.notes && (
+        <div style={{
+          background: 'var(--bg-3)',
+          border: '1px solid var(--border)',
+          borderLeft: '3px solid var(--accent)',
+          borderRadius: 'var(--radius)',
+          padding: '12px 16px',
+          marginBottom: 20,
+          display: 'flex',
+          gap: 10,
+          alignItems: 'flex-start',
+        }}>
+          <span style={{ fontSize: 15, flexShrink: 0 }}>📌</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 }}>Project notes</div>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{customer.notes}</p>
+          </div>
+          <button onClick={onEdit} style={{ fontSize: 11, padding: '3px 8px', color: 'var(--text-3)', flexShrink: 0 }} title="Edit notes">✎</button>
+        </div>
+      )}
+
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       {tab === 'milestones' && (

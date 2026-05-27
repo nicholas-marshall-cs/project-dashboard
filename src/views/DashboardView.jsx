@@ -248,12 +248,18 @@ export default function DashboardView({ customers, tasks, blockers, onSelectCust
                         style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', opacity: c.archived ? 0.6 : 1 }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <td style={{ padding: '11px 14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <td style={{ padding: '11px 14px', maxWidth: 220 }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                             <Avatar name={c.name} size={28} />
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{c.name}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
                               {c.owner && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{c.owner}</div>}
+                              {c.notes && (
+                                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                                  title={c.notes}>
+                                  📌 {c.notes}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
