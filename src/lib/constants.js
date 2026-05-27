@@ -44,9 +44,9 @@ export function milestoneStatus(dateStr, completed) {
 
 export function statusMeta(dateStr, completed) {
   const s = milestoneStatus(dateStr, completed)
-  if (!s)              return { label: 'Not set',  color: 'var(--text-3)',  bg: 'transparent',      border: 'var(--border)' }
-  if (s === 'done')    return { label: 'Complete', color: 'var(--green)',   bg: 'var(--green-bg)',   border: 'var(--green)' }
-  if (s === 'overdue') return { label: 'Overdue',  color: 'var(--red)',     bg: 'var(--red-bg)',     border: 'var(--red)' }
+  if (!s)              return { label: 'Not set',  color: 'var(--text-3)',  bg: 'transparent',    border: 'var(--border)' }
+  if (s === 'done')    return { label: 'Complete', color: 'var(--green)',   bg: 'var(--green-bg)', border: 'var(--green)' }
+  if (s === 'overdue') return { label: 'Overdue',  color: 'var(--red)',     bg: 'var(--red-bg)',   border: 'var(--red)' }
   if (s === 'soon') {
     const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000)
     return { label: diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff}d`, color: 'var(--amber)', bg: 'var(--amber-bg)', border: 'var(--amber)' }
@@ -55,16 +55,20 @@ export function statusMeta(dateStr, completed) {
 }
 
 // ── Sheet column layouts ───────────────────────────────────────────────────────
-// Customers sheet: base fields + date per milestone + completed flag per milestone + custom milestones as JSON
-export const MS_DATE_KEYS      = MILESTONES.map(m => m.key)
-export const MS_COMPLETE_KEYS  = MILESTONES.map(m => `${m.key}_done`)
-export const CUST_COLS         = ['id','name','owner','type','notes', ...MS_DATE_KEYS, ...MS_COMPLETE_KEYS, 'customMilestones']
-export const TASK_COLS         = ['id','customerId','title','owner','status','createdAt']
-export const UPDATE_COLS       = ['id','customerId','text','author','createdAt']
-export const BLOCKER_COLS      = ['id','customerId','title','type','detail','raisedAt','resolvedAt']
+// Global milestone dates + completion flags occupy fixed columns.
+// Custom milestones are stored entirely as JSON in the customMilestones column:
+//   [{ key, label, date, completed }, ...]
+// This means custom dates/completions never need dynamic columns.
+
+export const MS_DATE_KEYS     = MILESTONES.map(m => m.key)
+export const MS_COMPLETE_KEYS = MILESTONES.map(m => `${m.key}_done`)
+export const CUST_COLS        = ['id','name','owner','type','notes', ...MS_DATE_KEYS, ...MS_COMPLETE_KEYS, 'customMilestones']
+export const TASK_COLS        = ['id','customerId','title','owner','status','createdAt']
+export const UPDATE_COLS      = ['id','customerId','text','author','createdAt']
+export const BLOCKER_COLS     = ['id','customerId','title','type','detail','raisedAt','resolvedAt']
 
 export function rowToObj(cols, row) {
-  const obj = {}; cols.forEach((c,i) => { obj[c] = row[i] || '' }); return obj
+  const obj = {}; cols.forEach((c, i) => { obj[c] = row[i] || '' }); return obj
 }
 
 export function objToRow(cols, obj) {
@@ -73,21 +77,30 @@ export function objToRow(cols, obj) {
 
 export function rowToCustomer(row) {
   const obj = rowToObj(CUST_COLS, row)
-  const { id, name, owner, type, notes, customMilestones, ...rest } = obj
-  // Split rest into dates and completions
-  const dates = {}; const completions = {}
-  MS_DATE_KEYS.forEach(k     => { dates[k]       = rest[k] || '' })
+  const { id, name, owner, type, notes, customMilestones: cmRaw, ...rest } = obj
+
+  // Global milestone dates
+  const dates = {}
+  MS_DATE_KEYS.forEach(k => { dates[k] = rest[k] || '' })
+
+  // Global milestone completions
+  const completions = {}
   MS_COMPLETE_KEYS.forEach(k => { completions[k] = rest[k] === 'true' })
-  // Parse custom milestones — stored as JSON string
-  let custom = []
-  try { if (customMilestones) custom = JSON.parse(customMilestones) } catch {}
-  return { id, name, owner, type, notes, dates, completions, customMilestones: custom }
+
+  // Custom milestones — full objects with date and completed baked in
+  // Shape: [{ key, label, date, completed }]
+  let customMilestones = []
+  try { if (cmRaw) customMilestones = JSON.parse(cmRaw) } catch {}
+
+  return { id, name, owner, type, notes, dates, completions, customMilestones }
 }
 
 export function customerToRow(c) {
   return CUST_COLS.map(col => {
     if (['id','name','owner','type','notes'].includes(col)) return c[col] || ''
-    if (col === 'customMilestones') return c.customMilestones?.length ? JSON.stringify(c.customMilestones) : ''
+    if (col === 'customMilestones') {
+      return c.customMilestones?.length ? JSON.stringify(c.customMilestones) : ''
+    }
     if (col.endsWith('_done')) return c.completions?.[col] ? 'true' : ''
     return c.dates?.[col] || ''
   })

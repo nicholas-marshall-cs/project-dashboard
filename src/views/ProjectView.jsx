@@ -70,7 +70,7 @@ function MilestoneCard({ label, dateStr, completed, onToggle, onDateChange, isCu
   )
 }
 
-function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemoveCustom }) {
+function MilestonesTab({ customer, onToggleGlobal, onGlobalDateChange, onAddCustom, onCustomDateChange, onToggleCustom, onRemoveCustom }) {
   const [newLabel, setNewLabel] = useState('')
   const [showAdd,  setShowAdd]  = useState(false)
   const [saving,   setSaving]   = useState(false)
@@ -85,29 +85,27 @@ function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemove
     setNewLabel(''); setShowAdd(false); setSaving(false)
   }
 
-  // Progress summary
-  const allMs       = [...globalMs.map(m => m.key), ...customMs.map(m => m.key)]
-  const doneCount   = allMs.filter(k => customer.completions?.[k] || customer.completions?.[`${k}_done`]).length
-  const totalCount  = allMs.length
+  const globalDone = globalMs.filter(m => customer.completions?.[`${m.key}_done`]).length
+  const customDone = customMs.filter(m => m.completed).length
+  const doneCount  = globalDone + customDone
+  const totalCount = globalMs.length + customMs.length
 
   return (
     <div>
-      {/* Progress bar */}
       <div style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Overall progress</span>
           <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>{doneCount} / {totalCount} complete</span>
         </div>
         <div style={{ height: 4, background: 'var(--bg-3)', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${totalCount ? (doneCount/totalCount)*100 : 0}%`, background: 'var(--green)', borderRadius: 2, transition: 'width 0.3s' }} />
+          <div style={{ height: '100%', width: `${totalCount ? (doneCount / totalCount) * 100 : 0}%`, background: 'var(--green)', borderRadius: 2, transition: 'width 0.3s' }} />
         </div>
       </div>
 
-      {/* Global milestones */}
       <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>Standard milestones</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10, marginBottom: 24 }}>
         {globalMs.map(m => {
-          const doneKey = `${m.key}_done`
+          const doneKey   = `${m.key}_done`
           const completed = !!(customer.completions?.[doneKey])
           return (
             <MilestoneCard
@@ -115,15 +113,14 @@ function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemove
               label={m.label}
               dateStr={customer.dates[m.key]}
               completed={completed}
-              onToggle={() => onToggle(doneKey)}
-              onDateChange={val => onDateChange(m.key, val)}
+              onToggle={() => onToggleGlobal(doneKey)}
+              onDateChange={val => onGlobalDateChange(m.key, val)}
               isCustom={false}
             />
           )
         })}
       </div>
 
-      {/* Custom milestones */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Custom milestones ({customMs.length})
@@ -135,12 +132,7 @@ function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemove
 
       {showAdd && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input
-            value={newLabel} onChange={e => setNewLabel(e.target.value)}
-            placeholder="e.g. Security review sign-off"
-            onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
-            autoFocus
-          />
+          <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. Security review sign-off" onKeyDown={e => e.key === 'Enter' && handleAddCustom()} autoFocus />
           <button className="primary" onClick={handleAddCustom} disabled={saving || !newLabel.trim()} style={{ whiteSpace: 'nowrap' }}>Add</button>
           <button onClick={() => { setShowAdd(false); setNewLabel('') }}>Cancel</button>
         </div>
@@ -151,22 +143,18 @@ function MilestonesTab({ customer, onToggle, onDateChange, onAddCustom, onRemove
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
-        {customMs.map(m => {
-          const doneKey = `${m.key}_done`
-          const completed = !!(customer.completions?.[doneKey] || customer.completions?.[m.key])
-          return (
-            <MilestoneCard
-              key={m.key}
-              label={m.label}
-              dateStr={customer.dates?.[m.key]}
-              completed={completed}
-              onToggle={() => onToggle(m.key)}
-              onDateChange={val => onDateChange(m.key, val)}
-              isCustom={true}
-              onRemove={() => onRemoveCustom(m.key)}
-            />
-          )
-        })}
+        {customMs.map(m => (
+          <MilestoneCard
+            key={m.key}
+            label={m.label}
+            dateStr={m.date || ''}
+            completed={!!m.completed}
+            onToggle={() => onToggleCustom(m.key)}
+            onDateChange={val => onCustomDateChange(m.key, val)}
+            isCustom={true}
+            onRemove={() => onRemoveCustom(m.key)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -206,7 +194,6 @@ const STATUS_COLORS = {
 function TasksTab({ tasks, customerId, onAdd, onStatusChange, onDelete, saving }) {
   const [showModal, setShowModal] = useState(false)
   const myTasks = tasks.filter(t => t.customerId === customerId)
-
   return (
     <div>
       <SectionHeader title={`Tasks (${myTasks.length})`} action={<button className="primary" onClick={() => setShowModal(true)} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add task</button>} />
@@ -238,13 +225,11 @@ function TasksTab({ tasks, customerId, onAdd, onStatusChange, onDelete, saving }
 function UpdatesTab({ updates, customerId, onAdd, onDelete, saving }) {
   const [text, setText] = useState('')
   const myUpdates = [...updates.filter(u => u.customerId === customerId)].sort((a,b) => b.createdAt.localeCompare(a.createdAt))
-
   const submit = async () => {
     if (!text.trim()) return
     await onAdd({ customerId, text: text.trim(), author: 'You' })
     setText('')
   }
-
   return (
     <div>
       <SectionHeader title={`Updates (${myUpdates.length})`} />
@@ -300,11 +285,9 @@ function BlockersTab({ blockers, customerId, onAdd, onResolve, onDelete, saving 
   const myBlockers = [...blockers.filter(b => b.customerId === customerId)].sort((a,b) => a.resolvedAt.localeCompare(b.resolvedAt) || b.raisedAt.localeCompare(a.raisedAt))
   const open   = myBlockers.filter(b => !b.resolvedAt)
   const closed = myBlockers.filter(b => b.resolvedAt)
-
   const TypeBadge = ({ type }) => type === 'Waiting on Customer'
     ? <Badge label="Waiting on customer" color="var(--amber)" bg="var(--amber-bg)" border="var(--amber)" />
     : <Badge label="Internal" color="var(--red)" bg="var(--red-bg)" border="var(--red)" />
-
   const BlockerRow = ({ b }) => (
     <div style={{ background: 'var(--bg-3)', border: `1px solid ${b.resolvedAt ? 'var(--border)' : 'var(--border-2)'}`, borderRadius: 'var(--radius)', padding: '12px 14px', opacity: b.resolvedAt ? 0.55 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -326,7 +309,6 @@ function BlockersTab({ blockers, customerId, onAdd, onResolve, onDelete, saving 
       </div>
     </div>
   )
-
   return (
     <div>
       <SectionHeader title={`Open items (${open.length})`} action={<button className="primary" onClick={() => setShowModal(true)} style={{ fontSize: 12, padding: '5px 11px' }}>+ Add blocker</button>} />
@@ -354,15 +336,14 @@ export default function ProjectView({ customer, tasks, updates, blockers, onBack
 
   const wrap = fn => async (...args) => { setSaving(true); try { await fn(...args) } finally { setSaving(false) } }
 
-  // Inline date change — updates customer.dates directly
-  const handleDateChange = async (msKey, val) => {
+  const handleGlobalDateChange = async (msKey, val) => {
     const updated = { ...customer, dates: { ...customer.dates, [msKey]: val } }
     await data.editCustomer(updated)
   }
 
-  const myTasks    = tasks.filter(t => t.customerId === customer.id)
-  const myUpdates  = updates.filter(u => u.customerId === customer.id)
-  const myBlockers = blockers.filter(b => b.customerId === customer.id)
+  const myTasks      = tasks.filter(t => t.customerId === customer.id)
+  const myUpdates    = updates.filter(u => u.customerId === customer.id)
+  const myBlockers   = blockers.filter(b => b.customerId === customer.id)
   const openBlockers = myBlockers.filter(b => !b.resolvedAt).length
 
   const tabs = [
@@ -393,10 +374,12 @@ export default function ProjectView({ customer, tasks, updates, blockers, onBack
       {tab === 'milestones' && (
         <MilestonesTab
           customer={customer}
-          onToggle={key => wrap(data.toggleMilestone)(customer.id, key)}
-          onDateChange={handleDateChange}
-          onAddCustom={label => wrap(data.addCustomMilestone)(customer.id, label)}
-          onRemoveCustom={key => wrap(data.removeCustomMilestone)(customer.id, key)}
+          onToggleGlobal={key  => wrap(data.toggleMilestone)(customer.id, key)}
+          onGlobalDateChange={handleGlobalDateChange}
+          onAddCustom={label   => wrap(data.addCustomMilestone)(customer.id, label)}
+          onCustomDateChange={(key, val) => wrap(data.updateCustomMilestoneDate)(customer.id, key, val)}
+          onToggleCustom={key  => wrap(data.toggleCustomMilestone)(customer.id, key)}
+          onRemoveCustom={key  => wrap(data.removeCustomMilestone)(customer.id, key)}
         />
       )}
       {tab === 'tasks'    && <TasksTab tasks={tasks} customerId={customer.id} onAdd={wrap(data.addTask)} onStatusChange={wrap(data.editTask)} onDelete={wrap(data.removeTask)} saving={saving} />}

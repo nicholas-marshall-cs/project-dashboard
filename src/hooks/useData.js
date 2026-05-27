@@ -29,63 +29,89 @@ export function useData(token) {
 
   useEffect(() => { load() }, [load])
 
+  // ── Internal helper ────────────────────────────────────────────────────────
+  const persistCustomer = useCallback(async (updated, prevList) => {
+    const idx = prevList.findIndex(x => x.id === updated.id)
+    if (idx === -1) throw new Error('Customer not found')
+    await updateCustomer(token, updated, idx)
+    setCustomers(p => p.map(x => x.id === updated.id ? updated : x))
+    return updated
+  }, [token])
+
   // ── Customers ──────────────────────────────────────────────────────────────
   const addCustomer = useCallback(async (c) => {
     const nc = { ...c, id: Date.now().toString(), completions: {}, customMilestones: [] }
-    await appendCustomer(token, nc); setCustomers(p => [...p, nc]); return nc
+    await appendCustomer(token, nc)
+    setCustomers(p => [...p, nc])
+    return nc
   }, [token])
 
   const editCustomer = useCallback(async (c) => {
-    const idx = customers.findIndex(x => x.id === c.id)
-    await updateCustomer(token, c, idx); setCustomers(p => p.map(x => x.id === c.id ? c : x))
-  }, [token, customers])
+    await persistCustomer(c, customers)
+  }, [persistCustomer, customers])
 
   const removeCustomer = useCallback(async (id) => {
     const idx = customers.findIndex(x => x.id === id)
-    await deleteCustomer(token, idx); setCustomers(p => p.filter(x => x.id !== id))
-    setTasks(p => p.filter(x => x.customerId !== id))
-    setUpdates(p => p.filter(x => x.customerId !== id))
+    await deleteCustomer(token, idx)
+    setCustomers(p => p.filter(x => x.id !== id))
+    setTasks(p    => p.filter(x => x.customerId !== id))
+    setUpdates(p  => p.filter(x => x.customerId !== id))
     setBlockers(p => p.filter(x => x.customerId !== id))
   }, [token, customers])
 
-  // Toggle a milestone's completed state
-  const toggleMilestone = useCallback(async (customerId, key) => {
+  // ── Global milestone toggle ────────────────────────────────────────────────
+  // Global milestones use completions[key_done]
+  const toggleMilestone = useCallback(async (customerId, doneKey) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
     const updated = {
       ...c,
-      completions: { ...c.completions, [key]: !c.completions?.[key] }
+      completions: { ...c.completions, [doneKey]: !c.completions?.[doneKey] }
     }
-    const idx = customers.findIndex(x => x.id === customerId)
-    await updateCustomer(token, updated, idx)
-    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
-  }, [token, customers])
+    await persistCustomer(updated, customers)
+  }, [persistCustomer, customers])
 
-  // Add a custom milestone to a specific customer
+  // ── Custom milestone operations ────────────────────────────────────────────
+  // Custom milestones store date and completed inside the object itself:
+  // { key, label, date, completed }
+
   const addCustomMilestone = useCallback(async (customerId, label) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
-    const newMs = { key: `custom_${Date.now()}`, label }
+    const newMs  = { key: `custom_${Date.now()}`, label, date: '', completed: false }
     const updated = { ...c, customMilestones: [...(c.customMilestones || []), newMs] }
-    const idx = customers.findIndex(x => x.id === customerId)
-    await updateCustomer(token, updated, idx)
-    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
-  }, [token, customers])
+    await persistCustomer(updated, customers)
+  }, [persistCustomer, customers])
 
-  // Remove a custom milestone from a specific customer
+  const updateCustomMilestoneDate = useCallback(async (customerId, key, date) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const updated = {
+      ...c,
+      customMilestones: (c.customMilestones || []).map(m => m.key === key ? { ...m, date } : m)
+    }
+    await persistCustomer(updated, customers)
+  }, [persistCustomer, customers])
+
+  const toggleCustomMilestone = useCallback(async (customerId, key) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    const updated = {
+      ...c,
+      customMilestones: (c.customMilestones || []).map(m => m.key === key ? { ...m, completed: !m.completed } : m)
+    }
+    await persistCustomer(updated, customers)
+  }, [persistCustomer, customers])
+
   const removeCustomMilestone = useCallback(async (customerId, key) => {
     const c = customers.find(x => x.id === customerId)
     if (!c) return
     const updated = {
       ...c,
-      customMilestones: (c.customMilestones || []).filter(m => m.key !== key),
-      completions: Object.fromEntries(Object.entries(c.completions || {}).filter(([k]) => k !== key)),
-      dates: Object.fromEntries(Object.entries(c.dates || {}).filter(([k]) => k !== key)),
+      customMilestones: (c.customMilestones || []).filter(m => m.key !== key)
     }
-    const idx = customers.findIndex(x => x.id === customerId)
-    await updateCustomer(token, updated, idx)
-    setCustomers(p => p.map(x => x.id === customerId ? updated : x))
-  }, [token, customers])
+    await persistCustomer(updated, customers)
+  }, [persistCustomer, customers])
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
   const addTask = useCallback(async (t) => {
@@ -121,7 +147,8 @@ export function useData(token) {
     const b = blockers.find(x => x.id === id)
     if (!b) return
     const updated = { ...b, resolvedAt: new Date().toISOString() }
-    await updateBlocker(token, updated, blockers); setBlockers(p => p.map(x => x.id === id ? updated : x))
+    await updateBlocker(token, updated, blockers)
+    setBlockers(p => p.map(x => x.id === id ? updated : x))
   }, [token, blockers])
 
   const removeBlocker = useCallback(async (id) => {
@@ -132,7 +159,8 @@ export function useData(token) {
     customers, tasks, updates, blockers,
     loading, error, reload: load,
     addCustomer, editCustomer, removeCustomer,
-    toggleMilestone, addCustomMilestone, removeCustomMilestone,
+    toggleMilestone,
+    addCustomMilestone, updateCustomMilestoneDate, toggleCustomMilestone, removeCustomMilestone,
     addTask, editTask, removeTask,
     addUpdate, removeUpdate,
     addBlocker, resolveBlocker, removeBlocker,
