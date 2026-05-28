@@ -36,12 +36,14 @@ function nextActionableMilestone(customer) {
 }
 
 function customerHealth(customer) {
-  const ms    = allMilestonesFor(customer)
-  const done  = ms.filter(m => isCompleted(customer, m.key)).length
-  const dates = ms.map(m => m.isCustom ? m.date : customer.dates[m.key])
+  const ms         = allMilestonesFor(customer)
+  const incomplete = ms.filter(m => !isCompleted(customer, m.key))
+  const done       = ms.length - incomplete.length
+  // Only evaluate dates on milestones that haven't been completed
+  const dates = incomplete.map(m => m.isCustom ? m.date : customer.dates[m.key])
   if (dates.some(d => milestoneStatus(d, false) === 'overdue')) return 'red'
   if (dates.some(d => milestoneStatus(d, false) === 'soon'))    return 'amber'
-  if (done === ms.length && ms.length > 0)                       return 'complete'
+  if (done === ms.length && ms.length > 0)                      return 'complete'
   return 'green'
 }
 
