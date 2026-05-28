@@ -16,11 +16,23 @@ function isCompleted(customer, key) {
 }
 
 function nextActionableMilestone(customer) {
-  return allMilestonesFor(customer).find(m => {
+  // Collect all incomplete milestones that are overdue or due soon
+  const incomplete = allMilestonesFor(customer).filter(m => {
     if (isCompleted(customer, m.key)) return false
-    const s = milestoneStatus(m.isCustom ? m.date : customer.dates[m.key], false)
+    const date = m.isCustom ? m.date : customer.dates[m.key]
+    const s = milestoneStatus(date, false)
     return s === 'soon' || s === 'overdue'
   })
+  // Sort by actual date ascending — nearest first, custom and global treated equally
+  incomplete.sort((a, b) => {
+    const da = a.isCustom ? a.date : customer.dates[a.key]
+    const db = b.isCustom ? b.date : customer.dates[b.key]
+    if (!da && !db) return 0
+    if (!da) return 1
+    if (!db) return -1
+    return da.localeCompare(db)
+  })
+  return incomplete[0] || null
 }
 
 function customerHealth(customer) {
@@ -275,9 +287,23 @@ export default function DashboardView({ customers, tasks, blockers, onSelectCust
                             <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? 'var(--text-3)' : 'var(--accent)', borderRadius: 2 }} />
                           </div>
                         </td>
-                        <td style={{ padding: '11px 14px', fontSize: 12, maxWidth: 170 }}>
-                          {nextMs
-                            ? <span style={{ color: milestoneStatus(nextMs.isCustom ? nextMs.date : c.dates[nextMs.key], false) === 'overdue' ? 'var(--red)' : 'var(--amber)' }}>{nextMs.label.slice(0, 26)}</span>
+                        <td style={{ padding: '11px 14px', maxWidth: 190 }}>
+                          {nextMs ? (() => {
+                            const msDate = nextMs.isCustom ? nextMs.date : c.dates[nextMs.key]
+                            const isOverdue = milestoneStatus(msDate, false) === 'overdue'
+                            return (
+                              <div title={nextMs.label}>
+                                <div style={{ fontSize: 12, color: isOverdue ? 'var(--red)' : 'var(--amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 175 }}>
+                                  {nextMs.label}
+                                </div>
+                                {msDate && (
+                                  <div style={{ fontSize: 10, color: isOverdue ? 'var(--red)' : 'var(--amber)', opacity: 0.7, fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                                    {isOverdue ? 'Overdue · ' : ''}{formatDate(msDate)}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()
                             : <span style={{ color: 'var(--green)', fontSize: 11 }}>✓ All clear</span>}
                         </td>
                         <td style={{ padding: '11px 14px' }}>
@@ -330,7 +356,16 @@ export default function DashboardView({ customers, tasks, blockers, onSelectCust
                           <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? 'var(--text-3)' : 'var(--accent)', borderRadius: 2 }} />
                         </div>
                       </div>
-                      {nextMs && <span style={{ fontSize: 11, color: 'var(--amber)' }}>↑ {nextMs.label.slice(0, 20)}</span>}
+                      {nextMs && (() => {
+                          const msDate = nextMs.isCustom ? nextMs.date : c.dates[nextMs.key]
+                          const isOverdue = milestoneStatus(msDate, false) === 'overdue'
+                          return (
+                            <span style={{ fontSize: 11, color: isOverdue ? 'var(--red)' : 'var(--amber)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}
+                              title={nextMs.label}>
+                              ↑ {nextMs.label}
+                            </span>
+                          )
+                        })()}
                       {cBlockers > 0 && <span style={{ fontSize: 11, color: 'var(--red)' }}>⚠ {cBlockers} blocker{cBlockers > 1 ? 's' : ''}</span>}
                       <span style={{ fontSize: 10, color: 'var(--text-3)', marginLeft: 'auto' }}>{timeAgo(c.lastUpdated)}</span>
                     </div>
